@@ -139,7 +139,7 @@ body{font-family:Arial,sans-serif;background:#f0f2f5;min-height:100vh;display:fl
     <div class="inst-i"><div class="dot" style="background:#007a33"></div>Fechada: verde</div>
     <div class="inst-i"><div class="dot" style="background:#F5A200"></div>Risco: dourado</div>
     <div class="inst-i"><div class="dot" style="background:#4caf50"></div>Prevenção: verde claro</div>
-    <div class="inst-i"><div class="dot" style="background:#1a8a44"></div>Par encontrado</div>
+    <div class="inst-i"><div class="dot" style="background:#003087"></div>Par encontrado</div>
   </div>
 </div>
 
@@ -488,6 +488,14 @@ function irResultado(){
   irPara('telaResultado');
 }
 
+document.addEventListener('DOMContentLoaded', function(){
+  $('btn-comecar').addEventListener('click', comecarJogo);
+  $('btn-ver-rank').addEventListener('click', function(){irPara('telaRanking');});
+  $('btn-jogar-nov').addEventListener('click', comecarJogo);
+  $('btn-rank-res').addEventListener('click', function(){irPara('telaRanking');});
+  $('btn-voltar').addEventListener('click', function(){irPara('telaInicial');});
+  $('inp-nome').addEventListener('keydown', function(e){if(e.key==='Enter')comecarJogo();});
+});
 </script>
 </body>
 </html>
