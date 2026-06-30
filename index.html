@@ -202,7 +202,9 @@ var PARES=[
 ];
 
 var cartas=[],p1=null,p2=null,tent=0,pars=0,blk=false,jogNome='',ttTimer;
-var LS='mem_sesi_cipa_rank';
+/* ── SUPABASE CONFIG ── */
+var SB_URL='https://dymhwckvpzmqkmkskdof.supabase.co';
+var SB_KEY='sb_publishable_EFeivdlSzFnM1i55-_QZVA__9-vwFHM';
 
 function $(id){return document.getElementById(id);}
 
@@ -320,125 +322,172 @@ function irResultado(){
   irPara('telaResultado');
 }
 
-/* ── CONFIG SHAREPOINT ── */
-var SP_SITE = "https://pesenaibr.sharepoint.com/sites/cipasesicaruaru";
-var SP_LIST = "RankingMemoriaSESI";
-var SP_API  = SP_SITE + "/_api/web/lists/getbytitle('" + SP_LIST + "')/items";
-
-function getDigest(cb){
-  fetch(SP_SITE+"/_api/contextinfo",{
-    method:"POST",
-    headers:{"Accept":"application/json;odata=verbose","Content-Type":"application/json;odata=verbose"}
-  })
-  .then(function(r){return r.json();})
-  .then(function(d){cb(d.d.GetContextWebInformation.FormDigestValue);})
-  .catch(function(){cb(null);});
-}
+/* ── SUPABASE CONFIG ── */
+var SB_URL='https://dymhwckvpzmqkmkskdof.supabase.co';
+var SB_KEY='sb_publishable_EFeivdlSzFnM1i55-_QZVA__9-vwFHM';
 
 function salvarRanking(nome,tentativas,apr){
-  getDigest(function(digest){
-    if(!digest){salvarLocal(nome,tentativas,apr);return;}
-    var body=JSON.stringify({
-      "__metadata":{"type":"SP.Data."+SP_LIST+"ListItem"},
-      "Title": nome,
-      "Tentativas": tentativas,
-      "Aproveitamento": apr,
-      "Data": new Date().toISOString()
-    });
-    fetch(SP_API,{
-      method:"POST",
-      headers:{
-        "Accept":"application/json;odata=verbose",
-        "Content-Type":"application/json;odata=verbose",
-        "X-RequestDigest": digest
-      },
-      body: body
-    })
-    .then(function(r){
-      if(!r.ok) salvarLocal(nome,tentativas,apr);
-    })
-    .catch(function(){salvarLocal(nome,tentativas,apr);});
-  });
-}
-
-function salvarLocal(nome,tentativas,apr){
-  var entrada={nome:nome,tentativas:tentativas,apr:apr,data:new Date().toLocaleDateString('pt-BR')};
-  var lista=carregarLocal();
-  lista.push(entrada);
-  lista.sort(function(a,b){return a.tentativas-b.tentativas||b.apr-a.apr;});
-  if(lista.length>20)lista=lista.slice(0,20);
-  try{localStorage.setItem(LS,JSON.stringify(lista));}catch(e){}
-}
-
-function carregarLocal(){
-  try{var d=localStorage.getItem(LS);return d?JSON.parse(d):[];}catch(e){return[];}
+  fetch(SB_URL+'/rest/v1/ranking',{
+    method:'POST',
+    headers:{
+      'Content-Type':'application/json',
+      'apikey':SB_KEY,
+      'Authorization':'Bearer '+SB_KEY
+    },
+    body:JSON.stringify({nome:nome,tentativas:tentativas,aproveitamento:apr})
+  }).catch(function(e){console.error('Erro ao salvar:',e);});
 }
 
 function limparRanking(){
-  if(!confirm('Deseja apagar todo o ranking? (Apenas os registros locais serão removidos. Para apagar da lista SharePoint, acesse-a diretamente.)'))return;
-  try{localStorage.removeItem(LS);}catch(e){}
-  renderRanking();
+  alert('Para limpar o ranking, acesse o painel do Supabase.');
 }
 
 function renderRanking(){
   var div=$('rank-div');
   div.innerHTML='<div class="rk-empty">Carregando ranking...</div>';
-
-  fetch(SP_API+"?$select=Title,Tentativas,Aproveitamento,Data&$orderby=Tentativas asc,Aproveitamento desc&$top=20",{
-    headers:{"Accept":"application/json;odata=verbose"}
+  fetch(SB_URL+'/rest/v1/ranking?select=nome,tentativas,aproveitamento,created_at&order=tentativas.asc,aproveitamento.desc&limit=20',{
+    headers:{'apikey':SB_KEY,'Authorization':'Bearer '+SB_KEY}
   })
-  .then(function(r){
-    if(!r.ok) throw new Error('SP error');
-    return r.json();
-  })
-  .then(function(d){
-    var lista=d.d.results.map(function(e){
-      var dt=e.Data?new Date(e.Data).toLocaleDateString('pt-BR'):'—';
-      return {nome:e.Title,tentativas:e.Tentativas,apr:e.Aproveitamento,data:dt};
-    });
-    montarTabela(div,lista,true);
+  .then(function(r){return r.json();})
+  .then(function(lista){
+    if(!lista||!lista.length){
+      div.innerHTML='<div class="rk-empty">Nenhum resultado ainda.<br>Seja o primeiro a jogar! 🎮</div>';
+      return;
+    }
+    var rows=lista.map(function(e,i){
+      var pos=i+1;
+      var ic=pos===1?'🥇':pos===2?'🥈':pos===3?'🥉':pos;
+      var tc=e.aproveitamento>=80?'t-o':e.aproveitamento>=60?'t-p':'t-b';
+      var dt=new Date(e.created_at).toLocaleDateString('pt-BR');
+      return '<tr><td>'+ic+'</td><td style="font-weight:600">'+e.nome+'</td>'
+        +'<td style="text-align:center">'+e.tentativas+'</td>'
+        +'<td style="text-align:center"><span class="tag '+tc+'">'+e.aproveitamento+'%</span></td>'
+        +'<td style="color:#999;font-size:11px">'+dt+'</td></tr>';
+    }).join('');
+    div.innerHTML='<table class="rkt"><thead><tr>'
+      +'<th>#</th><th>Nome</th><th style="text-align:center">Tentativas</th>'
+      +'<th style="text-align:center">Aproveit.</th><th>Data</th>'
+      +'</tr></thead><tbody>'+rows+'</tbody></table>'
+      +'<p class="rk-info">🌐 Ranking compartilhado | Menor tentativas = melhor desempenho</p>';
   })
   .catch(function(){
-    /* fallback: localStorage */
-    var lista=carregarLocal();
-    montarTabela(div,lista,false);
+    div.innerHTML='<div class="rk-empty">Erro ao carregar ranking.<br>Verifique sua conexão.</div>';
+  });
+}
+function irPara(id){
+  document.querySelectorAll('.tela').forEach(function(t){t.classList.remove('ativa');});
+  $(id).classList.add('ativa');
+  $('ttp').style.display='none';
+  if(id==='telaRanking') renderRanking();
+}
+
+function setMsg(t,tp){var e=$('msg');e.textContent=t;e.className=tp;}
+
+function mostrarTip(t){
+  var tt=$('ttp');tt.textContent=t;tt.style.display='block';
+  clearTimeout(ttTimer);
+  ttTimer=setTimeout(function(){tt.style.display='none';},3500);
+}
+
+function embaralhar(a){
+  var b=a.slice();
+  for(var i=b.length-1;i>0;i--){
+    var j=Math.floor(Math.random()*(i+1));
+    var tmp=b[i];b[i]=b[j];b[j]=tmp;
+  }
+  return b;
+}
+
+function comecarJogo(){
+  var inp=$('inp-nome');
+  var nome=inp.value.trim();
+  if(!nome){$('nome-hint').style.display='block';inp.focus();return;}
+  $('nome-hint').style.display='none';
+  jogNome=nome;
+  p1=null;p2=null;tent=0;pars=0;blk=false;
+  $('jnome').textContent='Jogador(a): '+jogNome;
+  $('st-p').textContent='0/8';
+  $('st-t').textContent='0';
+  $('pb').style.width='0%';
+  setMsg('Clique em duas cartas para encontrar os pares!','info');
+  var pcs=[];
+  PARES.forEach(function(p){
+    pcs.push({parId:p.id,tipo:'risco',texto:p.risco,icon:p.ir,exp:p.exp});
+    pcs.push({parId:p.id,tipo:'prev',texto:p.prev,icon:p.ip,exp:p.exp});
+  });
+  cartas=embaralhar(pcs).map(function(c,i){return Object.assign({},c,{idx:i,enc:false,vir:false});});
+  renderGrid();
+  irPara('telaJogo');
+}
+
+function renderGrid(){
+  var g=$('grid');g.innerHTML='';
+  cartas.forEach(function(c,i){
+    var w=document.createElement('div');w.className='cw';w.id='cw'+i;
+    w.addEventListener('click',function(){clicar(i);});
+    var ci=document.createElement('div');ci.className='ci';ci.id='ci'+i;
+    var fr=document.createElement('div');fr.className='cf cf-fr';
+    fr.innerHTML='<div class="fr-m">CIPA</div><div class="fr-q">?</div>';
+    var vr=document.createElement('div');
+    vr.className='cf cf-vr '+(c.tipo==='risco'?'risco':'prev');
+    vr.innerHTML='<div class="vr-tp">'+(c.tipo==='risco'?'⚠ Risco':'✔ Prevenção')+'</div>'
+      +'<div class="vr-linha"><div class="vr-ic">'+c.icon+'</div><div class="vr-tx">'+c.texto+'</div></div>';
+    ci.appendChild(fr);ci.appendChild(vr);w.appendChild(ci);g.appendChild(w);
   });
 }
 
-function montarTabela(div,lista,online){
-  if(!lista||!lista.length){
-    div.innerHTML='<div class="rk-empty">Nenhum resultado ainda.<br>Seja o primeiro a jogar! 🎮</div>';
-    return;
-  }
-  var fonte=online
-    ? '<p class="rk-info">Ranking compartilhado — SharePoint | Menor tentativas = melhor desempenho</p>'
-    : '<p class="rk-info" style="color:#c00">⚠ Modo offline — dados salvos apenas neste dispositivo</p>';
-  var rows=lista.map(function(e,i){
-    var pos=i+1;
-    var ic=pos===1?'🥇':pos===2?'🥈':pos===3?'🥉':pos;
-    var tc=e.apr>=80?'t-o':e.apr>=60?'t-p':'t-b';
-    return '<tr><td>'+ic+'</td><td style="font-weight:600">'+e.nome+'</td>'
-      +'<td style="text-align:center">'+e.tentativas+'</td>'
-      +'<td style="text-align:center"><span class="tag '+tc+'">'+e.apr+'%</span></td>'
-      +'<td style="color:#999;font-size:11px">'+e.data+'</td></tr>';
-  }).join('');
-  div.innerHTML='<table class="rkt"><thead><tr>'
-    +'<th>#</th><th>Nome</th><th style="text-align:center">Tentativas</th>'
-    +'<th style="text-align:center">Aproveit.</th><th>Data</th>'
-    +'</tr></thead><tbody>'+rows+'</tbody></table>'
-    +fonte
-    +'<div style="text-align:right"><button class="btn-del" onclick="limparRanking()">Limpar cache local</button></div>';
+function clicar(i){
+  if(blk)return;
+  var c=cartas[i];
+  if(c.vir||c.enc)return;
+  if(p1&&p1.idx===i)return;
+  c.vir=true;
+  $('ci'+i).classList.add('vir');
+  if(!p1){p1=c;setMsg('Boa! Agora encontre a carta que combina.','info');}
+  else{p2=c;tent++;$('st-t').textContent=tent;verificar();}
 }
 
-// Eventos — sem onclick inline para evitar problemas em ambientes restritivos
-document.addEventListener('DOMContentLoaded', function(){
-  $('btn-comecar').addEventListener('click', comecarJogo);
-  $('btn-ver-rank').addEventListener('click', function(){irPara('telaRanking');});
-  $('btn-jogar-nov').addEventListener('click', comecarJogo);
-  $('btn-rank-res').addEventListener('click', function(){irPara('telaRanking');});
-  $('btn-voltar').addEventListener('click', function(){irPara('telaInicial');});
-  $('inp-nome').addEventListener('keydown', function(e){if(e.key==='Enter')comecarJogo();});
-});
+function verificar(){
+  blk=true;
+  if(p1.parId===p2.parId){
+    var a=p1,b=p2;
+    cartas[a.idx].enc=true;cartas[b.idx].enc=true;
+    $('ci'+a.idx).classList.add('enc');$('ci'+b.idx).classList.add('enc');
+    $('cw'+a.idx).classList.add('blk');$('cw'+b.idx).classList.add('blk');
+    pars++;
+    $('st-p').textContent=pars+'/8';
+    $('pb').style.width=(pars/8*100).toFixed(0)+'%';
+    var par=PARES.filter(function(x){return x.id===p1.parId;})[0];
+    setMsg('Par encontrado! '+par.risco+' → '+par.prev,'ok');
+    mostrarTip(par.exp);
+    p1=null;p2=null;blk=false;
+    if(pars===8)setTimeout(irResultado,1000);
+  } else {
+    setMsg('Ops! Essas cartas não combinam. Tente novamente.','err');
+    var x=p1,y=p2;
+    setTimeout(function(){
+      cartas[x.idx].vir=false;cartas[y.idx].vir=false;
+      $('ci'+x.idx).classList.remove('vir');$('ci'+y.idx).classList.remove('vir');
+      p1=null;p2=null;blk=false;
+      setMsg('Continue! Você consegue.','info');
+    },1100);
+  }
+}
+
+function irResultado(){
+  var apr=Math.min(Math.round(8/tent*100),100);
+  salvarRanking(jogNome,tent,apr);
+  $('r-tent').textContent=tent;
+  $('r-apr').textContent=apr+'%';
+  $('rsub').textContent='Parabéns, '+jogNome+'! Você concluiu o Memória Segura SESI — CIPA Caruaru.';
+  var ic,med,msg;
+  if(tent<=10){ic='🥇';med='🥇 Memória excelente!';msg='Desempenho brilhante! Você conhece os riscos e sabe como preveni-los. Continue sendo referência em SST!';}
+  else if(tent<=14){ic='🥈';med='🥈 Bom desempenho!';msg='Muito bem! Você identificou os pares com consistência. Pratique mais para chegar ao nível ouro.';}
+  else{ic='🥉';med='🥉 Continue treinando!';msg='Você concluiu o jogo! Revise os pares risco × prevenção e tente novamente para melhorar seu placar.';}
+  $('ric').textContent=ic;$('r-med').textContent=med;$('r-msg').textContent=msg;
+  irPara('telaResultado');
+}
+
 </script>
 </body>
 </html>
